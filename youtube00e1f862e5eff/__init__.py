@@ -6,6 +6,7 @@ import time
 import asyncio
 import random
 import json
+import requests  # Add this import
 from bs4 import BeautifulSoup
 from typing import AsyncGenerator
 from datetime import datetime
