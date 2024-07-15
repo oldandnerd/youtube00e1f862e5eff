@@ -1,14 +1,13 @@
 import re
-from typing import AsyncGenerator, List
+from typing import AsyncGenerator
 import aiohttp
 import dateparser
 import time
 import asyncio
-import requests  # Add this import
+import requests
 import random
 import json
 from bs4 import BeautifulSoup
-from typing import AsyncGenerator
 from datetime import datetime
 from exorde_data import (
     Item,
@@ -28,6 +27,14 @@ except Exception as e:
     logging.exception(f"[Youtube] nltk.corpus.stopwords.words('english') error: {e}")
     stopwords = []
 
+"""
+- Fetch https://www.youtube.com/results?search_query={KEYWORD} example: https://www.youtube.com/results?search_query=bitcoin
+- Get all video URLs + their titles
+- use youtube-comment library to extract all comments (with id, timestamp, and text)
+- rebuild comment URLs from id, select those with recent timestamp
+- add title to comment text (as first sentence).
+- that's all folks
+"""
 MAX_TOTAL_COMMENTS_TO_CHECK = 150
 PROBABILITY_ADDING_SUFFIX = 0.85
 PROBABILITY_DEFAULT_KEYWORD = 0.4
@@ -1073,6 +1080,7 @@ POST_REQUEST_TIMEOUT = 4
 SORT_BY_POPULAR = 0
 SORT_BY_RECENT = 1
 
+
 YOUTUBE_VIDEO_URL = 'https://www.youtube.com/watch?v={youtube_id}'
 YOUTUBE_CONSENT_URL = 'https://consent.youtube.com/save'
 
@@ -1092,7 +1100,7 @@ class YoutubeCommentDownloader:
         self.session.headers['User-Agent'] = USER_AGENT
         self.session.cookies.set('CONSENT', 'YES+cb', domain='.youtube.com')
             
-    def ajax_request(self, endpoint, ytcfg, retries=5, sleep=15):
+    def ajax_request(self, endpoint, ytcfg, retries=5, sleep=15 ):
         url = 'https://www.youtube.com' + endpoint['commandMetadata']['webCommandMetadata']['apiUrl']
 
         data = {'context': ytcfg['INNERTUBE_CONTEXT'],
@@ -1121,7 +1129,7 @@ class YoutubeCommentDownloader:
         html = response.text
         ytcfg = json.loads(self.regex_search(html, YT_CFG_RE, default=''))
         if not ytcfg:
-            return
+            return  # Unable to extract configuration
         if language:
             ytcfg['INNERTUBE_CONTEXT']['client']['hl'] = language
 
@@ -1242,7 +1250,7 @@ def is_within_timeframe_seconds(input_timestamp, timeframe_sec):
     current_timestamp = int(time.time())
     elapsed_time = current_timestamp - input_timestamp
 
-    if elapsed time <= timeframe_sec:
+    if elapsed_time <= timeframe_sec:
         return True
     else:
         return False
@@ -1324,6 +1332,7 @@ async def scrape(session, keyword, max_oldness_seconds, maximum_items_to_collect
     else:
         logging.info("[Youtube] No ytInitialData found.")
 
+
     last_n_video_comment_count = []
     n_rolling_size = 8
     n_rolling_size_min = 3
@@ -1343,15 +1352,14 @@ async def scrape(session, keyword, max_oldness_seconds, maximum_items_to_collect
             logging.exception(f"[Youtube] zip(*urlstitles) error: {e}")
         return []
     
-    all_items = []
+    items = []
     for url, title in zip(urls, titles):
         await asyncio.sleep(1) 
         if random.random() < 0.1:
             logging.info(f"[Youtube] Randomly skipping URL: {url}")
             continue
         youtube_video_url = url
-        comments_list = []
-        
+        comments_list = []       
         nb_zeros = 0
         if len(last_n_video_comment_count) >= n_rolling_size_min:
             for i in range(len(last_n_video_comment_count)-1, -1, -1):
@@ -1359,7 +1367,7 @@ async def scrape(session, keyword, max_oldness_seconds, maximum_items_to_collect
                     nb_zeros += 1
                 else:
                     break
-            random_inter_sleep = round(0.1 + nb_zeros*0.2,1)
+                random_inter_sleep = round(0.1 + nb_zeros*0.2, 1)
             logging.info(f"[Youtube] [soft rate limit] Waiting  {random_inter_sleep} seconds...")
             await asyncio.sleep(random_inter_sleep)
 
@@ -1379,13 +1387,13 @@ async def scrape(session, keyword, max_oldness_seconds, maximum_items_to_collect
                     break
         except Exception as e:      
             logging.exception(f"[Youtube] YT_COMMENT_DLOADER_ - ERROR: {e}")
-            random_inter_sleep = round(3 + random.random()*7,1)
+            random_inter_sleep = round(3 + random.random()*7, 1)
             logging.info(f"[Youtube] Waiting  {random_inter_sleep} seconds after the error...")
             await asyncio.sleep(random_inter_sleep)
 
         for comment in comments_list:
             try:
-                comment_timestamp = int(round(comment['time_parsed'],1))
+                comment_timestamp = int(round(comment['time_parsed'], 1))
             except Exception as e:
                 logging.exception(f"[Youtube] parsing comment datetime error: {e}\n \
                 THIS CAN BE DUE TO FOREIGN/SPECIAL DATE FORMAT, not handled at this date.\n Please report this to the Exorde discord, with your region/VPS location.")
@@ -1408,26 +1416,27 @@ async def scrape(session, keyword, max_oldness_seconds, maximum_items_to_collect
             comment_content = titled_context + ". " + comment['text']
             comment_datetime = convert_timestamp(comment_timestamp)
             if is_within_timeframe_seconds(comment_timestamp, max_oldness_seconds):
-                comment_obj = {'url':comment_url, 'content':comment_content, 'title':title, 'created_at':comment_datetime, 'external_id':comment_id}
+                comment_obj = {'url': comment_url, 'content': comment_content, 'title': title, 'created_at': comment_datetime, 'external_id': comment_id}
                 logging.info(f"[Youtube] found new comment: {comment_obj}")
-                all_items.append(Item(
+                item = Item(
                     content=Content(str(comment_content)),
                     created_at=CreatedAt(str(comment_obj['created_at'])),
                     title=Title(str(comment_obj['title'])),
                     domain=Domain("youtube.com"),
                     url=Url(comment_url),
                     external_id=ExternalId(str(comment_obj['external_id']))
-                ))
+                )
+                items.append(item)
                 yielded_items += 1
                 if yielded_items >= maximum_items_to_collect:
-                    break
+                    return items
         if nb_comments_checked >= max_total_comments_to_check:
             break
         
         URLs_remaining_trials -= 1
         if URLs_remaining_trials <= 0:
             break
-    return all_items
+    return items
 
 def randomly_replace_or_choose_keyword(input_string, p):
     if random.random() < p:
@@ -1471,15 +1480,13 @@ def read_parameters(parameters):
 
     return max_oldness_seconds, maximum_items_to_collect, min_post_length, probability_to_select_default_kws, max_total_comments_to_check
 
-
 def convert_spaces_to_plus(input_string):
     return input_string.replace(" ", "+")
 
-def load_proxies(filename):
+def load_proxies(file_path):
     proxies = []
-    with open(filename, 'r') as file:
-        lines = file.readlines()
-        for line in lines:
+    with open(file_path, 'r') as file:
+        for line in file:
             if line.strip():
                 proxies.append(line.strip())
     return proxies
@@ -1495,7 +1502,7 @@ async def query(parameters: dict) -> AsyncGenerator[Item, None]:
     max_oldness_seconds, maximum_items_to_collect, min_post_length, probability_to_select_default_kws, max_total_comments_to_check = read_parameters(parameters)
     selected_keyword = ""
     YT_COMMENT_DLOADER_ = YoutubeCommentDownloader()
-
+    
     content_map = {}
     await asyncio.sleep(1)
     try:
@@ -1504,36 +1511,32 @@ async def query(parameters: dict) -> AsyncGenerator[Item, None]:
         selected_keyword = randomly_replace_or_choose_keyword(selected_keyword, p=probability_to_select_default_kws)
         selected_keyword = convert_spaces_to_plus(selected_keyword)
     except Exception as e:
-        logging.exception(f"[Youtube parameters] parameters: {parameters}. Error when reading keyword: {e}")
+        logging.exception(f"[Youtube parameters] parameters: {parameters}. Error when reading keyword: {e}")        
         selected_keyword = randomly_replace_or_choose_keyword("", p=1)
 
     logging.info(f"[Youtube] - Scraping latest comments posted less than {max_oldness_seconds} seconds ago, on youtube videos related to keyword: {selected_keyword}.")
 
     proxies = load_proxies('/exorde/ips.txt')
-    sessions = await asyncio.gather(*[create_session_with_proxy(proxy) for proxy in proxies])
+    sessions = [await create_session_with_proxy(proxy) for proxy in proxies]
 
     try:
         tasks = [scrape(session, selected_keyword, max_oldness_seconds, maximum_items_to_collect, max_total_comments_to_check) for session in sessions]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         for items in results:
-            if isinstance(items, Exception):
-                logging.error(f"An error occurred: {items}")
-                continue
-
-            for item in items:
-                if item['content'] in content_map:
-                    continue
-                content_map[item['content']] = True
-
-                if len(item['content']) < min_post_length:
-                    continue
-
-                yield item
-                yielded_items += 1
-                if yielded_items >= maximum_items_to_collect:
-                    break
-
+            if isinstance(items, list):
+                for item in items:
+                    if item.content in content_map:
+                        continue
+                    else:
+                        content_map[item.content] = True
+                    if len(item.content) < min_post_length:
+                        continue
+                    yielded_items += 1
+                    yield item
+                    if yielded_items >= maximum_items_to_collect:
+                        break
     finally:
         for session in sessions:
             await session.close()
+            await asyncio.sleep(0.1)
