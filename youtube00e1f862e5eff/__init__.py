@@ -6,6 +6,7 @@ import time
 import asyncio
 import random
 import json
+import requests  # Add this import
 from bs4 import BeautifulSoup
 from aiohttp_socks import ProxyConnector
 from exorde_data import (
