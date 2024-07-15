@@ -4,7 +4,6 @@ import aiohttp
 import dateparser
 import time
 import asyncio
-import requests
 import random
 import json
 from bs4 import BeautifulSoup
@@ -1065,11 +1064,13 @@ DEFAULT_KEYWORDS = [
 global YT_COMMENT_DLOADER_
 YT_COMMENT_DLOADER_ = None
 
+###### --- YOUTUBE COMMENT DOWNLOADER --- ########
 NB_AJAX_CONSECUTIVE_MAX_TRIALS = 15
 REQUEST_TIMEOUT = 8
 POST_REQUEST_TIMEOUT = 4
 SORT_BY_POPULAR = 0
 SORT_BY_RECENT = 1
+
 
 YOUTUBE_VIDEO_URL = 'https://www.youtube.com/watch?v={youtube_id}'
 YOUTUBE_CONSENT_URL = 'https://consent.youtube.com/save'
@@ -1090,7 +1091,7 @@ class YoutubeCommentDownloader:
         self.session.headers['User-Agent'] = USER_AGENT
         self.session.cookies.set('CONSENT', 'YES+cb', domain='.youtube.com')
             
-    def ajax_request(self, endpoint, ytcfg, retries=5, sleep=15 ):
+    def ajax_request(self, endpoint, ytcfg, retries=5, sleep=15):
         url = 'https://www.youtube.com' + endpoint['commandMetadata']['webCommandMetadata']['apiUrl']
 
         data = {'context': ytcfg['INNERTUBE_CONTEXT'],
@@ -1175,7 +1176,7 @@ class YoutubeCommentDownloader:
                         continuations.append(next(self.search_dict(item, 'buttonRenderer'))['command'])
 
             toolbar_payloads = self.search_dict(response, 'engagementToolbarStateEntityPayload')
-            toolbar_states = {payloads['key']:payloads for payloads in toolbar_payloads}
+            toolbar_states = {payloads['key']: payloads for payloads in toolbar_payloads}
             for comment in reversed(list(self.search_dict(response, 'commentEntityPayload'))):
                 properties = comment['properties']
                 author = comment['author']
@@ -1242,6 +1243,7 @@ class YoutubeCommentDownloader:
             elif isinstance(current_item, list):
                 stack.extend(current_item)
 
+
 def is_within_timeframe_seconds(input_timestamp, timeframe_sec):
     input_timestamp = int(input_timestamp)
     current_timestamp = int(time.time())  # Get the current UNIX timestamp
@@ -1283,19 +1285,15 @@ def randomly_add_search_filter(input_URL, p):
     else:
         return input_URL
     
-async def scrape_with_session(session: aiohttp.ClientSession, proxy: str, keyword: str, max_oldness_seconds: int, maximum_items_to_collect: int, max_total_comments_to_check: int) -> list:
+async def scrape(keyword, max_oldness_seconds, maximum_items_to_collect, max_total_comments_to_check, session, proxy):
     global YT_COMMENT_DLOADER_
     URL = "https://www.youtube.com/results?search_query={}".format(keyword)
     URL = randomly_add_search_filter(URL, p=PROBABILITY_ADDING_SUFFIX)
     logging.info(f"[Youtube] Looking at video URL: {URL}")
 
-    try:
-        async with session.get(URL, timeout=REQUEST_TIMEOUT) as response:
-            response.raise_for_status()
-            html = await response.text()
-    except aiohttp.ClientError as e:
-        logging.error(f"An error occurred during the request: {e}")
-        return []
+    async with session.get(URL, timeout=REQUEST_TIMEOUT, proxy=proxy) as response:
+        response.raise_for_status()
+        html = await response.text()
 
     soup = BeautifulSoup(html, 'html.parser')
 
@@ -1356,7 +1354,7 @@ async def scrape_with_session(session: aiohttp.ClientSession, proxy: str, keywor
             logging.info(f"[Youtube] urls or titles is empty, skipping...")
         else:
             logging.exception(f"[Youtube] zip(*urlstitles) error: {e}")
-        return []
+        return
     
     results = []
 
@@ -1463,27 +1461,75 @@ async def scrape_with_session(session: aiohttp.ClientSession, proxy: str, keywor
                     break
         if nb_comments_checked >= max_total_comments_to_check:
             break
-            
+        
         URLs_remaining_trials -= 1
         if URLs_remaining_trials <= 0:
             break
+            
     return results
 
-async def create_session_with_proxy(ip: str, port: str) -> Tuple[aiohttp.ClientSession, str]:
-    proxy = f"http://{ip}:{port}"
-    connector = aiohttp.TCPConnector(ssl=False)
-    session = aiohttp.ClientSession(connector=connector)
-    session._default_headers.update({'User-Agent': USER_AGENT})
-    return session, proxy
+def randomly_replace_or_choose_keyword(input_string, p):
+    if random.random() < p:
+        return input_string
+    else:
+        return random.choice(DEFAULT_KEYWORDS)
 
-def load_proxies(file_path: str) -> list:
+def read_parameters(parameters) -> Tuple[int, int, int, float, int]:
+    # Check if parameters is not empty or None
+    if parameters and isinstance(parameters, dict):
+        try:
+            max_oldness_seconds = parameters.get("max_oldness_seconds", DEFAULT_OLDNESS_SECONDS)
+        except KeyError:
+            max_oldness_seconds = DEFAULT_OLDNESS_SECONDS
+
+        try:
+            maximum_items_to_collect = parameters.get("maximum_items_to_collect", DEFAULT_MAXIMUM_ITEMS)
+        except KeyError:
+            maximum_items_to_collect = DEFAULT_MAXIMUM_ITEMS
+
+        try:
+            min_post_length = parameters.get("min_post_length", DEFAULT_MIN_POST_LENGTH)
+        except KeyError:
+            min_post_length = DEFAULT_MIN_POST_LENGTH
+
+        try:
+            probability_to_select_default_kws = parameters.get("probability_to_select_default_kws", PROBABILITY_DEFAULT_KEYWORD)
+        except KeyError:
+            probability_to_select_default_kws = PROBABILITY_DEFAULT_KEYWORD
+
+        try:
+            max_total_comments_to_check = parameters.get("max_total_comments_to_check", MAX_TOTAL_COMMENTS_TO_CHECK)
+        except KeyError:
+            max_total_comments_to_check = MAX_TOTAL_COMMENTS_TO_CHECK
+
+
+    else:
+        # Assign default values if parameters is empty or None
+        max_oldness_seconds = DEFAULT_OLDNESS_SECONDS
+        maximum_items_to_collect = DEFAULT_MAXIMUM_ITEMS
+        min_post_length = DEFAULT_MIN_POST_LENGTH
+        probability_to_select_default_kws = PROBABILITY_DEFAULT_KEYWORD
+        max_total_comments_to_check = MAX_TOTAL_COMMENTS_TO_CHECK
+
+    return max_oldness_seconds, maximum_items_to_collect, min_post_length, probability_to_select_default_kws, max_total_comments_to_check
+
+def convert_spaces_to_plus(input_string):
+    return input_string.replace(" ", "+")
+
+def load_proxies(filepath: str):
     proxies = []
-    with open(file_path, 'r') as file:
+    with open(filepath, 'r') as file:
         for line in file:
-            ip_port = line.strip().split('=')
-            if len(ip_port) == 2:
-                proxies.append(ip_port[1])
+            line = line.strip()
+            if line:
+                ip_port = line.split('=')[1]
+                proxies.append(f"http://{ip_port}")
     return proxies
+
+async def create_session_with_proxy(proxy):
+    connector = aiohttp.TCPConnector()
+    session = aiohttp.ClientSession(connector=connector)
+    return session, proxy
 
 async def query(parameters: dict) -> AsyncGenerator[Item, None]:
     global YT_COMMENT_DLOADER_
@@ -1505,12 +1551,12 @@ async def query(parameters: dict) -> AsyncGenerator[Item, None]:
         selected_keyword = randomly_replace_or_choose_keyword("", p=1)
 
     logging.info(f"[Youtube] - Scraping latest comments posted less than {max_oldness_seconds} seconds ago, on youtube videos related to keyword: {selected_keyword}.")
-    
+
     proxies = load_proxies('/exorde/ips.txt')
-    sessions = [await create_session_with_proxy(*proxy.split(':')) for proxy in proxies]
+    sessions = [await create_session_with_proxy(proxy) for proxy in proxies]
 
     try:
-        scrape_tasks = [scrape_with_session(session, proxy, selected_keyword, max_oldness_seconds, maximum_items_to_collect, max_total_comments_to_check) for session, proxy in sessions]
+        scrape_tasks = [scrape(selected_keyword, max_oldness_seconds, maximum_items_to_collect, max_total_comments_to_check, session, proxy) for session, proxy in sessions]
         results = await asyncio.gather(*scrape_tasks)
 
         for items in results:
