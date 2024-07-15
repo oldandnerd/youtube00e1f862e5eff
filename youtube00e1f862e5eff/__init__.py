@@ -1471,6 +1471,15 @@ def read_parameters(parameters):
 def convert_spaces_to_plus(input_string):
     return input_string.replace(" ", "+")
 
+def load_proxies(file_path):
+    proxies = []
+    with open(file_path, 'r') as f:
+        for line in f:
+            if line.startswith('ip_port='):
+                proxy = line.strip().split('=')[1]
+                proxies.append(proxy)
+    return proxies
+
 async def create_session_with_proxy(proxy):
     connector = ProxyConnector.from_url(f'socks5://{proxy}')
     return aiohttp.ClientSession(connector=connector)
