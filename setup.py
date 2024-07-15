@@ -12,7 +12,9 @@ setup(
         "dateparser>=1.1.3",
         "requests>=2.27.1",
         "HTMLParser",
-        "beautifulsoup4>=4.11"
+        "beautifulsoup4>=4.11",
+        "aiohttp_socks",
+        "tokenizers"
     ],
     extras_require={"dev": ["pytest", "pytest-cov", "pytest-asyncio"]},
 )
