@@ -6,6 +6,7 @@ import dateparser
 import time
 import asyncio
 import json
+import random
 from bs4 import BeautifulSoup
 from datetime import datetime
 from exorde_data import (
