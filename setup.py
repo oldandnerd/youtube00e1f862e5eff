@@ -14,7 +14,8 @@ setup(
         "HTMLParser",
         "beautifulsoup4>=4.11",
         "aiohttp_socks",
-        "tokenizers"
+        "tokenizers",
+        "requests"
     ],
     extras_require={"dev": ["pytest", "pytest-cov", "pytest-asyncio"]},
 )
