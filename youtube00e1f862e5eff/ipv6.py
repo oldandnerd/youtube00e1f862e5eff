@@ -1283,11 +1283,18 @@ def randomly_add_search_filter(input_URL, p):
         return input_URL
     
 
-async def scrape(keyword, max_oldness_seconds, maximum_items_to_collect, max_total_comments_to_check, proxy_url, local_ip):
+async def scrape(keyword, max_oldness_seconds, maximum_items_to_collect, max_total_comments_to_check, proxy_url):
     global YT_COMMENT_DLOADER_
     URL = "https://www.youtube.com/results?search_query={}".format(keyword)
     URL = randomly_add_search_filter(URL, p=PROBABILITY_ADDING_SUFFIX)
     logging.info(f"[Youtube] Looking at video URL: {URL}")
+
+    # Ensure the proxy URL is correctly formatted for IPv6
+    if proxy_url.startswith("socks5://") and proxy_url.count(":") > 1:
+        # Extract the IPv6 address and port
+        ipv6_address, port = proxy_url[len("socks5://"):].rsplit(":", 1)
+        ipv6_address = ipv6_address.strip("[]")
+        proxy_url = f"socks5://[{ipv6_address}]:{port}"
 
     # Ensure the proxy URL is valid
     try:
@@ -1298,8 +1305,7 @@ async def scrape(keyword, max_oldness_seconds, maximum_items_to_collect, max_tot
 
     async with aiohttp.ClientSession(connector=connector) as session:
         try:
-            # Specify the local address for the outgoing connection
-            async with session.get(URL, timeout=REQUEST_TIMEOUT, ssl=False) as response:
+            async with session.get(URL, timeout=REQUEST_TIMEOUT) as response:
                 response.raise_for_status()
                 html = await response.text()
         except aiohttp.ClientProxyConnectionError as e:
@@ -1458,6 +1464,7 @@ async def scrape(keyword, max_oldness_seconds, maximum_items_to_collect, max_tot
 
 
 
+
             
 def randomly_replace_or_choose_keyword(input_string, p):
     if random.random() < p:
@@ -1510,8 +1517,7 @@ async def query(parameters: dict) -> AsyncGenerator[Item, None]:
     yielded_items = 0
     max_oldness_seconds, maximum_items_to_collect, min_post_length, probability_to_select_default_kws, max_total_comments_to_check  = read_parameters(parameters)
     selected_keyword = ""
-    proxy_url = parameters.get("proxy_url", "socks5://192.227.159.229:30002")
-    local_ip = parameters.get("local_ip", "0.0.0.0")  # Default to bind to all interfaces if not specified
+    proxy_url = parameters.get("proxy_url", "socks5://2607:f130:0:f8::2bab:3a16:1080")
 
     # Ensure the proxy URL is correctly formatted for IPv6
     if proxy_url.startswith("socks5://") and proxy_url.count(":") > 1:
@@ -1534,7 +1540,7 @@ async def query(parameters: dict) -> AsyncGenerator[Item, None]:
 
     logging.info(f"[Youtube] - Scraping latest comments posted less than {max_oldness_seconds} seconds ago, on youtube videos related to keyword: {selected_keyword}.")
     try:
-        async for item in scrape(selected_keyword, max_oldness_seconds, maximum_items_to_collect, max_total_comments_to_check, proxy_url, local_ip):
+        async for item in scrape(selected_keyword, max_oldness_seconds, maximum_items_to_collect, max_total_comments_to_check, proxy_url):
             if item['content'] in content_map:
                 continue
             else:
