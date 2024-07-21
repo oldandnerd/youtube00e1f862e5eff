@@ -1283,6 +1283,8 @@ def randomly_add_search_filter(input_URL, p):
         return input_URL
     
 
+
+
 async def scrape(keyword, max_oldness_seconds, maximum_items_to_collect, max_total_comments_to_check, proxy_url, local_ip):
     global YT_COMMENT_DLOADER_
     URL = "https://www.youtube.com/results?search_query={}".format(keyword)
@@ -1290,6 +1292,11 @@ async def scrape(keyword, max_oldness_seconds, maximum_items_to_collect, max_tot
     logging.info(f"[Youtube] Looking at video URL: {URL}")
 
     # Ensure the proxy URL is valid
+    if proxy_url.startswith("socks5://") and "[" in proxy_url and "]" in proxy_url:
+        # This indicates an IPv6 address format, which might have been incorrectly set for an IPv4 address
+        # Remove the brackets for an IPv4 address
+        proxy_url = proxy_url.replace("[", "").replace("]", "")
+    
     try:
         connector = ProxyConnector.from_url(proxy_url)
     except ValueError as e:
@@ -1298,8 +1305,7 @@ async def scrape(keyword, max_oldness_seconds, maximum_items_to_collect, max_tot
 
     async with aiohttp.ClientSession(connector=connector) as session:
         try:
-            # Specify the local address for the outgoing connection
-            async with session.get(URL, timeout=REQUEST_TIMEOUT, ssl=False) as response:
+            async with session.get(URL, timeout=REQUEST_TIMEOUT) as response:
                 response.raise_for_status()
                 html = await response.text()
         except aiohttp.ClientProxyConnectionError as e:
@@ -1458,6 +1464,7 @@ async def scrape(keyword, max_oldness_seconds, maximum_items_to_collect, max_tot
 
 
 
+
             
 def randomly_replace_or_choose_keyword(input_string, p):
     if random.random() < p:
@@ -1514,10 +1521,8 @@ async def query(parameters: dict) -> AsyncGenerator[Item, None]:
     local_ip = parameters.get("local_ip", "0.0.0.0")  # Default to bind to all interfaces if not specified
 
     # Ensure the proxy URL is correctly formatted for IPv6
-    if proxy_url.startswith("socks5://") and proxy_url.count(":") > 1:
-        ipv6_address, port = proxy_url[len("socks5://"):].rsplit(":", 1)
-        ipv6_address = ipv6_address.strip("[]")
-        proxy_url = f"socks5://[{ipv6_address}]:{port}"
+    if proxy_url.startswith("socks5://") and "[" in proxy_url and "]" in proxy_url:
+        proxy_url = proxy_url.replace("[", "").replace("]", "")
 
     YT_COMMENT_DLOADER_ = YoutubeCommentDownloader(proxy_url)
     
