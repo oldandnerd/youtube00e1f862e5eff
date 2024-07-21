@@ -3,7 +3,7 @@ from typing import AsyncGenerator
 import aiohttp
 import dateparser
 
-from itertools import cycle
+
 from aiohttp_socks import ProxyConnector
 
 import time
@@ -1285,44 +1285,44 @@ def randomly_add_search_filter(input_URL, p):
 
 
 
-async def scrape(keyword, max_oldness_seconds, maximum_items_to_collect, max_total_comments_to_check, proxy_list, local_ip):
+async def scrape(keyword, max_oldness_seconds, maximum_items_to_collect, max_total_comments_to_check, proxy_url, local_ip):
     global YT_COMMENT_DLOADER_
     URL = "https://www.youtube.com/results?search_query={}".format(keyword)
     URL = randomly_add_search_filter(URL, p=PROBABILITY_ADDING_SUFFIX)
     logging.info(f"[Youtube] Looking at video URL: {URL}")
 
-    proxy_cycle = cycle(proxy_list)  # Create an iterator that cycles through the proxies
+    # Ensure the proxy URL is valid
+    if proxy_url.startswith("socks5://") and "[" in proxy_url and "]" in proxy_url:
+        # This indicates an IPv6 address format, which might have been incorrectly set for an IPv4 address
+        # Remove the brackets for an IPv4 address
+        proxy_url = proxy_url.replace("[", "").replace("]", "")
+    
+    try:
+        connector = ProxyConnector.from_url(proxy_url)
+    except ValueError as e:
+        logging.error(f"Invalid proxy URL: {proxy_url} - {e}")
+        return
 
-    async with aiohttp.ClientSession() as session:
-        for _ in range(len(proxy_list)):  # Limit to the number of proxies to avoid infinite loop
-            proxy_url = next(proxy_cycle)
-            logging.info(f"Using proxy: {proxy_url}")
-            # Ensure the proxy URL is valid
-            if proxy_url.startswith("socks5://") and "[" in proxy_url and "]" in proxy_url:
-                # This indicates an IPv6 address format, which might have been incorrectly set for an IPv4 address
-                # Remove the brackets for an IPv4 address
-                proxy_url = proxy_url.replace("[", "").replace("]", "")
-
-            try:
-                connector = ProxyConnector.from_url(proxy_url)
-            except ValueError as e:
-                logging.error(f"Invalid proxy URL: {proxy_url} - {e}")
-                continue  # Try the next proxy
-
-            try:
-                async with aiohttp.ClientSession(connector=connector) as proxy_session:
-                    async with proxy_session.get(URL, timeout=REQUEST_TIMEOUT) as response:
-                        response.raise_for_status()
-                        html = await response.text()
-                        break  # Exit the loop if the request is successful
-            except (aiohttp.ClientProxyConnectionError, aiohttp.ClientHttpProxyError, aiohttp.ClientConnectionError, aiohttp.ClientError) as e:
-                logging.error(f"Proxy error with {proxy_url}: {e}")
-                await asyncio.sleep(1)  # Short delay before trying the next proxy
-                continue
-            except Exception as e:
-                logging.error(f"Unexpected error with {proxy_url}: {e}")
-                await asyncio.sleep(1)  # Short delay before trying the next proxy
-                continue
+    async with aiohttp.ClientSession(connector=connector) as session:
+        try:
+            async with session.get(URL, timeout=REQUEST_TIMEOUT) as response:
+                response.raise_for_status()
+                html = await response.text()
+        except aiohttp.ClientProxyConnectionError as e:
+            logging.error(f"Proxy connection error: {e}")
+            return
+        except aiohttp.ClientHttpProxyError as e:
+            logging.error(f"HTTP proxy error: {e}")
+            return
+        except aiohttp.ClientConnectionError as e:
+            logging.error(f"Connection error: {e}")
+            return
+        except aiohttp.ClientError as e:
+            logging.error(f"Client error: {e}")
+            return
+        except Exception as e:
+            logging.error(f"Unexpected error: {e}")
+            return
 
     soup = BeautifulSoup(html, 'html.parser')
 
@@ -1463,6 +1463,8 @@ async def scrape(keyword, max_oldness_seconds, maximum_items_to_collect, max_tot
             break
 
 
+
+
             
 def randomly_replace_or_choose_keyword(input_string, p):
     if random.random() < p:
@@ -1515,15 +1517,14 @@ async def query(parameters: dict) -> AsyncGenerator[Item, None]:
     yielded_items = 0
     max_oldness_seconds, maximum_items_to_collect, min_post_length, probability_to_select_default_kws, max_total_comments_to_check  = read_parameters(parameters)
     selected_keyword = ""
-    proxy_list = parameters.get("proxy_list",  [
-    "socks5://192.227.159.229:30002",
-    "socks5://192.227.159.230:30002",
-    "socks5://192.227.159.231:30002",
-    "socks5://192.227.159.232:30002"
-])
+    proxy_url = parameters.get("proxy_url", "socks5://192.227.159.229:30002")
     local_ip = parameters.get("local_ip", "0.0.0.0")  # Default to bind to all interfaces if not specified
 
-    YT_COMMENT_DLOADER_ = YoutubeCommentDownloader(proxy_list)
+    # Ensure the proxy URL is correctly formatted for IPv6
+    if proxy_url.startswith("socks5://") and "[" in proxy_url and "]" in proxy_url:
+        proxy_url = proxy_url.replace("[", "").replace("]", "")
+
+    YT_COMMENT_DLOADER_ = YoutubeCommentDownloader(proxy_url)
     
     content_map = {}
     await asyncio.sleep(1)
@@ -1538,7 +1539,7 @@ async def query(parameters: dict) -> AsyncGenerator[Item, None]:
 
     logging.info(f"[Youtube] - Scraping latest comments posted less than {max_oldness_seconds} seconds ago, on youtube videos related to keyword: {selected_keyword}.")
     try:
-        async for item in scrape(selected_keyword, max_oldness_seconds, maximum_items_to_collect, max_total_comments_to_check, proxy_list, local_ip):
+        async for item in scrape(selected_keyword, max_oldness_seconds, maximum_items_to_collect, max_total_comments_to_check, proxy_url, local_ip):
             if item['content'] in content_map:
                 continue
             else:
@@ -1551,4 +1552,3 @@ async def query(parameters: dict) -> AsyncGenerator[Item, None]:
                 break
     except asyncio.exceptions.TimeoutError:
         logging.info(f"[Youtube] Internal requests are taking longer than {REQUEST_TIMEOUT} - we must give up & move on. Check your network.")
-
