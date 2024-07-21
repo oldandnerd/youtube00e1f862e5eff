@@ -1518,29 +1518,19 @@ def convert_spaces_to_plus(input_string):
     return input_string.replace(" ", "+")
 
 
-def read_proxy_ips(file_path="/exorde/ips.txt"):
-    proxy_ips = []
-    try:
-        with open(file_path, "r") as file:
-            for line in file:
-                ip = line.strip()
-                if ip:
-                    proxy_ips.append(f"socks5://{ip}")
-    except Exception as e:
-        logging.error(f"Error reading proxy IPs from {file_path}: {e}")
-    return proxy_ips
-
-
-
 async def query(parameters: dict) -> AsyncGenerator[Item, None]:
     global YT_COMMENT_DLOADER_
     yielded_items = 0
     max_oldness_seconds, maximum_items_to_collect, min_post_length, probability_to_select_default_kws, max_total_comments_to_check  = read_parameters(parameters)
     selected_keyword = ""
-    
-    # Get proxy list from file
-    proxy_list = read_proxy_ips()
-    
+    proxy_list = parameters.get("proxy_list", [
+        "socks5://192.227.159.229:30002",
+        "socks5://192.227.159.224:30002",
+        "socks5://192.227.159.204:30002",
+        "socks5://192.227.159.250:30002",
+        "socks5://192.227.159.236:30002",
+        "socks5://192.227.159.227:30002"
+    ])
     local_ip = parameters.get("local_ip", "0.0.0.0")
 
     YT_COMMENT_DLOADER_ = YoutubeCommentDownloader()
@@ -1571,6 +1561,7 @@ async def query(parameters: dict) -> AsyncGenerator[Item, None]:
                 break
     except asyncio.exceptions.TimeoutError:
         logging.info(f"[Youtube] Internal requests are taking longer than {REQUEST_TIMEOUT} - we must give up & move on. Check your network.")
+
 
 
 
