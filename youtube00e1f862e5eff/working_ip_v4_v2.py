@@ -2,7 +2,7 @@ import re
 from typing import AsyncGenerator
 import aiohttp
 import dateparser
-from typing import List
+
 from itertools import cycle
 from aiohttp_socks import ProxyConnector
 
@@ -1300,41 +1300,46 @@ def randomly_add_search_filter(input_URL, p):
 
 
 
-# NEW
-async def fetch_url_with_proxy(url, proxy_url):
-    if proxy_url.startswith("socks5://") and "[" in proxy_url and "]" in proxy_url:
-        proxy_url = proxy_url.replace("[", "").replace("]", "")
-    connector = ProxyConnector.from_url(proxy_url)
-    try:
-        async with aiohttp.ClientSession(connector=connector) as session:
-            async with session.get(url, timeout=REQUEST_TIMEOUT) as response:
-                response.raise_for_status()
-                return await response.text()
-    except Exception as e:
-        logging.error(f"Error fetching {url} with proxy {proxy_url}: {e}")
-        return None
-
-
-
-
-
 async def scrape(keyword, max_oldness_seconds, maximum_items_to_collect, max_total_comments_to_check, proxy_list, local_ip):
     global YT_COMMENT_DLOADER_
     URL = "https://www.youtube.com/results?search_query={}".format(keyword)
     URL = randomly_add_search_filter(URL, p=PROBABILITY_ADDING_SUFFIX)
     logging.info(f"[Youtube] Looking at video URL: {URL}")
 
-    tasks = [fetch_url_with_proxy(URL, proxy) for proxy in proxy_list]
-    results = await asyncio.gather(*tasks, return_exceptions=True)
+    proxy_cycle = cycle(proxy_list)  # Create an iterator that cycles through the proxies
 
-    for html in results:
-        if isinstance(html, Exception) or html is None:
-            continue
-        soup = BeautifulSoup(html, 'html.parser')
-        break
-    else:
-        logging.error("[Youtube] Failed to fetch the URL with all proxies.")
-        return
+    async with aiohttp.ClientSession() as session:
+        for _ in range(len(proxy_list)):  # Limit to the number of proxies to avoid infinite loop
+            proxy_url = next(proxy_cycle)
+            logging.info(f"Using proxy: {proxy_url}")
+            # Ensure the proxy URL is valid
+            if proxy_url.startswith("socks5://") and "[" in proxy_url and "]" in proxy_url:
+                # This indicates an IPv6 address format, which might have been incorrectly set for an IPv4 address
+                # Remove the brackets for an IPv4 address
+                proxy_url = proxy_url.replace("[", "").replace("]", "")
+
+            try:
+                connector = ProxyConnector.from_url(proxy_url)
+            except ValueError as e:
+                logging.error(f"Invalid proxy URL: {proxy_url} - {e}")
+                continue  # Try the next proxy
+
+            try:
+                async with aiohttp.ClientSession(connector=connector) as proxy_session:
+                    async with proxy_session.get(URL, timeout=REQUEST_TIMEOUT) as response:
+                        response.raise_for_status()
+                        html = await response.text()
+                        break  # Exit the loop if the request is successful
+            except (aiohttp.ClientProxyConnectionError, aiohttp.ClientHttpProxyError, aiohttp.ClientConnectionError, aiohttp.ClientError) as e:
+                logging.error(f"Proxy error with {proxy_url}: {e}")
+                await asyncio.sleep(1)  # Short delay before trying the next proxy
+                continue
+            except Exception as e:
+                logging.error(f"Unexpected error with {proxy_url}: {e}")
+                await asyncio.sleep(1)  # Short delay before trying the next proxy
+                continue
+
+    soup = BeautifulSoup(html, 'html.parser')
 
     URLs_remaining_trials = 10
     await asyncio.sleep(2)
@@ -1471,6 +1476,7 @@ async def scrape(keyword, max_oldness_seconds, maximum_items_to_collect, max_tot
         URLs_remaining_trials -= 1
         if URLs_remaining_trials <= 0:
             break
+
 
 
 
