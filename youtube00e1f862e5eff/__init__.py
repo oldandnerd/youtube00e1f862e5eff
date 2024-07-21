@@ -1538,7 +1538,7 @@ async def query(parameters: dict) -> AsyncGenerator[Item, None]:
     selected_keyword = ""
     
     # Get proxy list from file with limit
-    proxy_list = read_proxy_ips(max_ip_load=20)
+    proxy_list = read_proxy_ips(max_ip_load=54)
     
     local_ip = parameters.get("local_ip", "0.0.0.0")
 
