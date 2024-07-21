@@ -1309,10 +1309,10 @@ async def fetch_url_with_proxy(url, proxy_url):
         async with aiohttp.ClientSession(connector=connector) as session:
             async with session.get(url, timeout=REQUEST_TIMEOUT) as response:
                 response.raise_for_status()
-                return await response.text()
+                return await response.text(), proxy_url
     except Exception as e:
         logging.error(f"Error fetching {url} with proxy {proxy_url}: {e}")
-        return None
+        return None, proxy_url
 
 
 
@@ -1327,9 +1327,11 @@ async def scrape(keyword, max_oldness_seconds, maximum_items_to_collect, max_tot
     tasks = [fetch_url_with_proxy(URL, proxy) for proxy in proxy_list]
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
-    for html in results:
+    for html, proxy_url in results:
         if isinstance(html, Exception) or html is None:
+            logging.info(f"[Youtube] Failed to fetch the URL with proxy: {proxy_url}")
             continue
+        logging.info(f"[Youtube] Successfully fetched the URL with proxy: {proxy_url}")
         soup = BeautifulSoup(html, 'html.parser')
         break
     else:
@@ -1387,12 +1389,18 @@ async def scrape(keyword, max_oldness_seconds, maximum_items_to_collect, max_tot
         else:
             logging.exception(f"[Youtube] zip(*urlstitles) error: {e}")
         return
+
+    proxy_cycle = cycle(proxy_list)
     
     for url, title in zip(urls, titles):
         await asyncio.sleep(1)
         if random.random() < 0.1:
             logging.info(f"[Youtube] Randomly skipping URL: {url}")
             continue
+
+        proxy_url = next(proxy_cycle)
+        logging.info(f"[Youtube] Using proxy: {proxy_url} for URL: {url}")
+        
         youtube_video_url = url
         comments_list = []
         nb_zeros = 0
@@ -1408,6 +1416,7 @@ async def scrape(keyword, max_oldness_seconds, maximum_items_to_collect, max_tot
 
         try:
             logging.info(f"[Youtube] Getting ...{url}")
+            YT_COMMENT_DLOADER_ = YoutubeCommentDownloader(proxy_url=proxy_url)
             comments_list = YT_COMMENT_DLOADER_.get_comments_from_url(url, sort_by=SORT_BY_RECENT, max_oldness_seconds=max_oldness_seconds)
 
             comments_list = list(comments_list)
@@ -1453,7 +1462,7 @@ async def scrape(keyword, max_oldness_seconds, maximum_items_to_collect, max_tot
             comment_datetime = convert_timestamp(comment_timestamp)
             if is_within_timeframe_seconds(comment_timestamp, max_oldness_seconds):
                 comment_obj = {'url': comment_url, 'content': comment_content, 'title': title, 'created_at': comment_datetime, 'external_id': comment_id}
-                logging.info(f"[Youtube] found new comment: {comment_obj}")
+                logging.info(f"[Youtube] found new comment: {comment_obj} using proxy: {proxy_url}")
                 yield Item(
                     content=Content(str(comment_content)),
                     created_at=CreatedAt(str(comment_obj['created_at'])),
