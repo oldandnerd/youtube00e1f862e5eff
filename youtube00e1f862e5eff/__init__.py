@@ -1221,7 +1221,9 @@ class YoutubeCommentDownloader:
 
                 current_time = time.time()
                 max_allowed_time = current_time - max_oldness_seconds
-                logging.info(f"[Youtube] Current time: {current_time}, Max allowed time: {max_allowed_time}, Comment time: {result['time_parsed']}")
+                logging.info(f"[Youtube] Current system time: {current_time}")
+                logging.info(f"[Youtube] Max allowed comment time: {max_allowed_time}")
+                logging.info(f"[Youtube] Comment time: {result['time_parsed']}")
 
                 if result['time_parsed'] < max_allowed_time:
                     old_comment_counter += 1
