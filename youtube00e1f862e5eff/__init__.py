@@ -1091,7 +1091,6 @@ YT_INITIAL_DATA_RE = r'(?:window\s*\[\s*["\']ytInitialData["\']\s*\]|ytInitialDa
 YT_HIDDEN_INPUT_RE = r'<input\s+type="hidden"\s+name="([A-Za-z0-9_]+)"\s+value="([A-Za-z0-9_\-\.]*)"\s*(?:required|)\s*>'
 
 class YoutubeCommentDownloader:
-
     def __init__(self, proxy_url=None):
         self.session = requests.Session()
         self.session.headers['User-Agent'] = USER_AGENT
@@ -1102,7 +1101,7 @@ class YoutubeCommentDownloader:
         url = 'https://www.youtube.com' + endpoint['commandMetadata']['webCommandMetadata']['apiUrl']
         data = {'context': ytcfg['INNERTUBE_CONTEXT'], 'continuation': endpoint['continuationCommand']['token']}
 
-        for _ in range(retries):
+        for attempt in range(retries):
             response = self.session.post(url, params={'key': ytcfg['INNERTUBE_API_KEY']}, json=data,
                                          timeout=POST_REQUEST_TIMEOUT, proxies={"http": self.proxy_url, "https": self.proxy_url})
             if response.status_code == 200:
@@ -1110,6 +1109,7 @@ class YoutubeCommentDownloader:
             if response.status_code in [403, 413]:
                 return {}
             else:
+                logging.warning(f"[Youtube] ajax_request: attempt {attempt+1} failed with status code {response.status_code}. Retrying in {sleep} seconds...")
                 time.sleep(sleep)
 
     def get_comments(self, youtube_id, *args, **kwargs):
@@ -1117,9 +1117,11 @@ class YoutubeCommentDownloader:
 
     def get_comments_from_url(self, youtube_url, sort_by=SORT_BY_RECENT, language=None, sleep=.1, limit=100,
                               max_oldness_seconds=3600):
+        logging.info(f"[Youtube] Fetching comments for URL: {youtube_url}")
         response = self.session.get(youtube_url, timeout=REQUEST_TIMEOUT, proxies={"http": self.proxy_url, "https": self.proxy_url})
 
         if 'consent' in str(response.url):
+            logging.info("[Youtube] Consent page detected. Agreeing automatically.")
             params = dict(re.findall(YT_HIDDEN_INPUT_RE, response.text))
             params.update({'continue': youtube_url, 'set_eom': False, 'set_ytc': True, 'set_apyt': True})
             response = self.session.post(YOUTUBE_CONSENT_URL, params=params, timeout=REQUEST_TIMEOUT)
@@ -1127,7 +1129,8 @@ class YoutubeCommentDownloader:
         html = response.text
         ytcfg = json.loads(self.regex_search(html, YT_CFG_RE, default=''))
         if not ytcfg:
-            return  # Unable to extract configuration
+            logging.warning("[Youtube] Unable to extract configuration.")
+            return
         if language:
             ytcfg['INNERTUBE_CONTEXT']['client']['hl'] = language
 
@@ -1136,6 +1139,7 @@ class YoutubeCommentDownloader:
         item_section = next(self.search_dict(data, 'itemSectionRenderer'), None)
         renderer = next(self.search_dict(item_section, 'continuationItemRenderer'), None) if item_section else None
         if not renderer:
+            logging.warning("[Youtube] Comments might be disabled for this video.")
             return
 
         sort_menu = next(self.search_dict(data, 'sortFilterSubMenuRenderer'), {}).get('subMenuItems', [])
@@ -1196,8 +1200,9 @@ class YoutubeCommentDownloader:
 
                 try:
                     result['time_parsed'] = dateparser.parse(result['time'].split('(')[0].strip()).timestamp()
-                except AttributeError:
-                    pass
+                    logging.info(f"[Youtube] Comment time parsed: {result['time_parsed']} (timestamp), {result['time']} (original)")
+                except AttributeError as e:
+                    logging.warning(f"[Youtube] Failed to parse comment time: {e}")
 
                 paid = (
                     comment.get('paidCommentChipRenderer', {})
@@ -1216,14 +1221,14 @@ class YoutubeCommentDownloader:
 
                 if result['time_parsed'] < time.time() - max_oldness_seconds:
                     old_comment_counter += 1
+                    logging.info(f"[Youtube] Old comment detected: {result['time']} (original), {result['time_parsed']} (timestamp)")
                     if old_comment_counter > 10:
-                        logging.info(f"[Youtube] The most recent comments are too old, moving on...")
+                        logging.info(f"[Youtube] The most recent comments are too old, moving on... {old_comment_counter} old comments found.")
                         break_condition = True
                     break
 
                 yield result
             time.sleep(sleep)
-
     @staticmethod
     def regex_search(text, pattern, group=1, default=None):
         match = re.search(pattern, text)
@@ -1400,6 +1405,7 @@ async def scrape(keyword, max_oldness_seconds, maximum_items_to_collect, max_tot
         for comment in comments_list:
             try:
                 comment_timestamp = int(round(comment['time_parsed'], 1))
+                logging.info(f"[Youtube] Comment timestamp: {comment_timestamp}")
             except Exception as e:
                 logging.exception(f"[Youtube] parsing comment datetime error: {e}\n \
                 THIS CAN BE DUE TO FOREIGN/SPECIAL DATE FORMAT, not handled at this date.\n Please report this to the Exorde discord, with your region/VPS location.")
@@ -1450,6 +1456,8 @@ async def scrape(keyword, max_oldness_seconds, maximum_items_to_collect, max_tot
         URLs_remaining_trials -= 1
         if URLs_remaining_trials <= 0:
             break
+
+
 
 
 def randomly_replace_or_choose_keyword(input_string, p):
