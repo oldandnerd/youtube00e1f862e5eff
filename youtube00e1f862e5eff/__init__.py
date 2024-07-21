@@ -1305,6 +1305,9 @@ async def scrape(keyword, max_oldness_seconds, maximum_items_to_collect, max_tot
         except aiohttp.ClientError as e:
             logging.error(f"An error occurred during the request: {e}")
             return
+        except ProxyConnectionError as e:
+            logging.error(f"Could not connect to proxy: {proxy_url} - {e}")
+            return
 
     soup = BeautifulSoup(html, 'html.parser')
 
@@ -1444,7 +1447,6 @@ async def scrape(keyword, max_oldness_seconds, maximum_items_to_collect, max_tot
         if URLs_remaining_trials <= 0:
             break
 
-
             
 def randomly_replace_or_choose_keyword(input_string, p):
     if random.random() < p:
@@ -1497,7 +1499,7 @@ async def query(parameters: dict) -> AsyncGenerator[Item, None]:
     yielded_items = 0
     max_oldness_seconds, maximum_items_to_collect, min_post_length, probability_to_select_default_kws, max_total_comments_to_check  = read_parameters(parameters)
     selected_keyword = ""
-    proxy_url = parameters.get("proxy_url", "socks5://2607:f130:0:f8::2bab:3a16:1080")
+    proxy_url = parameters.get("proxy_url", "socks5://localhost:9050")
 
     # Ensure the proxy URL is correctly formatted for IPv6
     if proxy_url.startswith("socks5://") and proxy_url.count(":") > 1:
