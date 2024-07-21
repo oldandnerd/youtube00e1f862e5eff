@@ -6,6 +6,7 @@ import random
 from itertools import cycle
 from aiohttp_socks import ProxyConnector
 
+
 import time
 import asyncio
 import requests
@@ -1405,7 +1406,7 @@ async def scrape(keyword, max_oldness_seconds, maximum_items_to_collect, max_tot
     results = []
 
     # Limit the number of concurrent tasks
-    semaphore = asyncio.Semaphore(10)
+    semaphore = asyncio.Semaphore(100)
 
     tasks = [process_url(url, title, next(proxy_cycle), max_oldness_seconds, semaphore, results) for url, title in zip(urls, titles)]
     await asyncio.gather(*tasks)
