@@ -2,6 +2,10 @@ import re
 from typing import AsyncGenerator
 import aiohttp
 import dateparser
+
+
+from aiohttp_socks import ProxyConnector
+
 import time
 import asyncio
 import requests
@@ -20,7 +24,7 @@ from exorde_data import (
     ExternalId
 )
 import logging
-from aiohttp_socks import ProxyConnector, ProxyConnectionError
+from aiohttp_socks import ProxyConnector
 
 try:
     import nltk
@@ -1278,9 +1282,6 @@ def randomly_add_search_filter(input_URL, p):
     else:
         return input_URL
     
-import aiohttp
-import asyncio
-from aiohttp_socks import ProxyConnector, ProxyConnectionError
 
 async def scrape(keyword, max_oldness_seconds, maximum_items_to_collect, max_total_comments_to_check, proxy_url):
     global YT_COMMENT_DLOADER_
@@ -1302,16 +1303,25 @@ async def scrape(keyword, max_oldness_seconds, maximum_items_to_collect, max_tot
         logging.error(f"Invalid proxy URL: {proxy_url} - {e}")
         return
 
-    async with aiohttp.ClientSession(headers={'User-Agent': USER_AGENT}, connector=connector) as session:
+    async with aiohttp.ClientSession(connector=connector) as session:
         try:
             async with session.get(URL, timeout=REQUEST_TIMEOUT) as response:
                 response.raise_for_status()
                 html = await response.text()
-        except aiohttp.ClientError as e:
-            logging.error(f"An error occurred during the request: {e}")
+        except aiohttp.ClientProxyConnectionError as e:
+            logging.error(f"Proxy connection error: {e}")
             return
-        except ProxyConnectionError as e:
-            logging.error(f"Could not connect to proxy: {proxy_url} - {e}")
+        except aiohttp.ClientHttpProxyError as e:
+            logging.error(f"HTTP proxy error: {e}")
+            return
+        except aiohttp.ClientConnectionError as e:
+            logging.error(f"Connection error: {e}")
+            return
+        except aiohttp.ClientError as e:
+            logging.error(f"Client error: {e}")
+            return
+        except Exception as e:
+            logging.error(f"Unexpected error: {e}")
             return
 
     soup = BeautifulSoup(html, 'html.parser')
@@ -1451,6 +1461,7 @@ async def scrape(keyword, max_oldness_seconds, maximum_items_to_collect, max_tot
         URLs_remaining_trials -= 1
         if URLs_remaining_trials <= 0:
             break
+
 
 
 
