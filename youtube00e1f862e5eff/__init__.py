@@ -1219,9 +1219,13 @@ class YoutubeCommentDownloader:
                     break_condition = True
                     break
 
-                if result['time_parsed'] < time.time() - max_oldness_seconds:
+                current_time = time.time()
+                max_allowed_time = current_time - max_oldness_seconds
+                logging.info(f"[Youtube] Current time: {current_time}, Max allowed time: {max_allowed_time}, Comment time: {result['time_parsed']}")
+
+                if result['time_parsed'] < max_allowed_time:
                     old_comment_counter += 1
-                    logging.info(f"[Youtube] Old comment detected: {result['time']} (original), {result['time_parsed']} (timestamp)")
+                    logging.info(f"[Youtube] Old comment detected: {result['time']} (original), {result['time_parsed']} (timestamp), Old comment count: {old_comment_counter}")
                     if old_comment_counter > 10:
                         logging.info(f"[Youtube] The most recent comments are too old, moving on... {old_comment_counter} old comments found.")
                         break_condition = True
@@ -1229,6 +1233,7 @@ class YoutubeCommentDownloader:
 
                 yield result
             time.sleep(sleep)
+
     @staticmethod
     def regex_search(text, pattern, group=1, default=None):
         match = re.search(pattern, text)
@@ -1456,6 +1461,7 @@ async def scrape(keyword, max_oldness_seconds, maximum_items_to_collect, max_tot
         URLs_remaining_trials -= 1
         if URLs_remaining_trials <= 0:
             break
+
 
 
 
