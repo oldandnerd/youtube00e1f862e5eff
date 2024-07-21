@@ -20,8 +20,7 @@ from exorde_data import (
     ExternalId
 )
 import logging
-from aiohttp_socks import ProxyConnector
-from python_socks import ProxyConnectionError  # Import the error
+from aiohttp_socks import ProxyConnector, ProxyConnectionError
 
 try:
     import nltk
@@ -1279,6 +1278,10 @@ def randomly_add_search_filter(input_URL, p):
     else:
         return input_URL
     
+import aiohttp
+import asyncio
+from aiohttp_socks import ProxyConnector, ProxyConnectionError
+
 async def scrape(keyword, max_oldness_seconds, maximum_items_to_collect, max_total_comments_to_check, proxy_url):
     global YT_COMMENT_DLOADER_
     URL = "https://www.youtube.com/results?search_query={}".format(keyword)
@@ -1448,6 +1451,7 @@ async def scrape(keyword, max_oldness_seconds, maximum_items_to_collect, max_tot
         URLs_remaining_trials -= 1
         if URLs_remaining_trials <= 0:
             break
+
 
 
             
