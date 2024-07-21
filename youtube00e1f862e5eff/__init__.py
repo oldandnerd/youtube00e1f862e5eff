@@ -1092,6 +1092,7 @@ YT_HIDDEN_INPUT_RE = r'<input\s+type="hidden"\s+name="([A-Za-z0-9_]+)"\s+value="
 
 
 class YoutubeCommentDownloader:
+
     def __init__(self, proxy_url=None):
         self.session = requests.Session()
         self.session.headers['User-Agent'] = USER_AGENT
@@ -1100,12 +1101,11 @@ class YoutubeCommentDownloader:
 
     def ajax_request(self, endpoint, ytcfg, retries=5, sleep=15):
         url = 'https://www.youtube.com' + endpoint['commandMetadata']['webCommandMetadata']['apiUrl']
-
-        data = {'context': ytcfg['INNERTUBE_CONTEXT'],
-                'continuation': endpoint['continuationCommand']['token']}
+        data = {'context': ytcfg['INNERTUBE_CONTEXT'], 'continuation': endpoint['continuationCommand']['token']}
 
         for _ in range(retries):
-            response = self.session.post(url, params={'key': ytcfg['INNERTUBE_API_KEY']}, json=data, timeout=POST_REQUEST_TIMEOUT, proxies={"http": self.proxy_url, "https": self.proxy_url})
+            response = self.session.post(url, params={'key': ytcfg['INNERTUBE_API_KEY']}, json=data,
+                                         timeout=POST_REQUEST_TIMEOUT, proxies={"http": self.proxy_url, "https": self.proxy_url})
             if response.status_code == 200:
                 return response.json()
             if response.status_code in [403, 413]:
@@ -1116,21 +1116,14 @@ class YoutubeCommentDownloader:
     def get_comments(self, youtube_id, *args, **kwargs):
         return self.get_comments_from_url(YOUTUBE_VIDEO_URL.format(youtube_id=youtube_id), *args, **kwargs)
 
-    def get_comments_from_url(self, youtube_url, sort_by=SORT_BY_RECENT, language=None, sleep=.1, limit=100, max_oldness_seconds=3600):
-        try:
-            response = self.session.get(youtube_url, timeout=REQUEST_TIMEOUT, proxies={"http": self.proxy_url, "https": self.proxy_url})
-        except requests.exceptions.RequestException as e:
-            logging.error(f"Error fetching YouTube page: {e}")
-            return
+    def get_comments_from_url(self, youtube_url, sort_by=SORT_BY_RECENT, language=None, sleep=.1, limit=100,
+                              max_oldness_seconds=3600):
+        response = self.session.get(youtube_url, timeout=REQUEST_TIMEOUT, proxies={"http": self.proxy_url, "https": self.proxy_url})
 
         if 'consent' in str(response.url):
             params = dict(re.findall(YT_HIDDEN_INPUT_RE, response.text))
             params.update({'continue': youtube_url, 'set_eom': False, 'set_ytc': True, 'set_apyt': True})
-            try:
-                response = self.session.post(YOUTUBE_CONSENT_URL, params=params, timeout=REQUEST_TIMEOUT, proxies={"http": self.proxy_url, "https": self.proxy_url})
-            except requests.exceptions.RequestException as e:
-                logging.error(f"Error submitting YouTube consent form: {e}")
-                return
+            response = self.session.post(YOUTUBE_CONSENT_URL, params=params, timeout=REQUEST_TIMEOUT)
 
         html = response.text
         ytcfg = json.loads(self.regex_search(html, YT_CFG_RE, default=''))
@@ -1144,7 +1137,7 @@ class YoutubeCommentDownloader:
         item_section = next(self.search_dict(data, 'itemSectionRenderer'), None)
         renderer = next(self.search_dict(item_section, 'continuationItemRenderer'), None) if item_section else None
         if not renderer:
-            return  # Comments disabled?
+            return
 
         sort_menu = next(self.search_dict(data, 'sortFilterSubMenuRenderer'), {}).get('subMenuItems', [])
         if not sort_menu:
@@ -1221,6 +1214,7 @@ class YoutubeCommentDownloader:
                     logging.info(f"[Youtube] Comment limit reached: {limit} newest comments found. Moving on...")
                     break_condition = True
                     break
+
                 if result['time_parsed'] < time.time() - max_oldness_seconds:
                     old_comment_counter += 1
                     if old_comment_counter > 10:
@@ -1249,6 +1243,7 @@ class YoutubeCommentDownloader:
                         stack.append(value)
             elif isinstance(current_item, list):
                 stack.extend(current_item)
+
 
 
 
