@@ -1318,6 +1318,27 @@ async def fetch_url_with_proxy(url, proxy_url):
 
 
 
+# NEW
+async def fetch_comments(youtube_url, proxy_url, max_oldness_seconds):
+    YT_COMMENT_DLOADER_ = YoutubeCommentDownloader(proxy_url=proxy_url)
+    try:
+        comments_list = list(YT_COMMENT_DLOADER_.get_comments_from_url(youtube_url, sort_by=SORT_BY_RECENT, max_oldness_seconds=max_oldness_seconds))
+        return comments_list, youtube_url, proxy_url
+    except Exception as e:
+        logging.error(f"[Youtube] YT_COMMENT_DLOADER_ - ERROR: {e}")
+        return [], youtube_url, proxy_url
+
+
+#NEW
+async def process_url(url, title, proxy_cycle, max_oldness_seconds, results):
+    proxy_url = next(proxy_cycle)
+    logging.info(f"[Youtube] Using proxy: {proxy_url} for URL: {url}")
+    comments_list, youtube_url, proxy_url = await fetch_comments(url, proxy_url, max_oldness_seconds)
+    results.append((comments_list, title, youtube_url, proxy_url))
+
+
+
+
 async def scrape(keyword, max_oldness_seconds, maximum_items_to_collect, max_total_comments_to_check, proxy_list, local_ip):
     global YT_COMMENT_DLOADER_
     URL = "https://www.youtube.com/results?search_query={}".format(keyword)
@@ -1391,50 +1412,15 @@ async def scrape(keyword, max_oldness_seconds, maximum_items_to_collect, max_tot
         return
 
     proxy_cycle = cycle(proxy_list)
-    
-    for url, title in zip(urls, titles):
-        await asyncio.sleep(1)
-        if random.random() < 0.1:
-            logging.info(f"[Youtube] Randomly skipping URL: {url}")
-            continue
+    results = []
 
-        proxy_url = next(proxy_cycle)
-        logging.info(f"[Youtube] Using proxy: {proxy_url} for URL: {url}")
-        
-        youtube_video_url = url
-        comments_list = []
-        nb_zeros = 0
-        if len(last_n_video_comment_count) >= n_rolling_size_min:
-            for i in range(len(last_n_video_comment_count)-1, -1, -1):
-                if last_n_video_comment_count[i] == 0:
-                    nb_zeros += 1
-                else:
-                    break
-            random_inter_sleep = round(0.1 + nb_zeros*0.2, 1)
-            logging.info(f"[Youtube] [soft rate limit] Waiting  {random_inter_sleep} seconds...")
-            await asyncio.sleep(random_inter_sleep)
+    tasks = [process_url(url, title, proxy_cycle, max_oldness_seconds, results) for url, title in zip(urls, titles)]
+    await asyncio.gather(*tasks)
 
-        try:
-            logging.info(f"[Youtube] Getting ...{url}")
-            YT_COMMENT_DLOADER_ = YoutubeCommentDownloader(proxy_url=proxy_url)
-            comments_list = YT_COMMENT_DLOADER_.get_comments_from_url(url, sort_by=SORT_BY_RECENT, max_oldness_seconds=max_oldness_seconds)
-
-            comments_list = list(comments_list)
-            nb_comments = len(comments_list)
-            nb_comments_checked += nb_comments
-            logging.info(f"[Youtube] Found {nb_comments} recent comments on video: {title}")
-            last_n_video_comment_count.append(len(comments_list))
-            if len(last_n_video_comment_count) > n_rolling_size:
-                last_n_video_comment_count.pop(0)
-            if len(last_n_video_comment_count) == n_rolling_size:
-                if sum(last_n_video_comment_count) == 0:
-                    logging.info("[Youtube] [RATE LIMITE PROTECTION] The rolling window of comments count is full of 0s. Stopping the scraping iteration...")
-                    break
-        except Exception as e:
-            logging.exception(f"[Youtube] YT_COMMENT_DLOADER_ - ERROR: {e}")
-            random_inter_sleep = round(3 + random.random()*7, 1)
-            logging.info(f"[Youtube] Waiting  {random_inter_sleep} seconds after the error...")
-            await asyncio.sleep(random_inter_sleep)
+    for comments_list, title, youtube_video_url, proxy_url in results:
+        nb_comments = len(comments_list)
+        nb_comments_checked += nb_comments
+        logging.info(f"[Youtube] Found {nb_comments} recent comments on video: {title} using proxy: {proxy_url}")
 
         for comment in comments_list:
             try:
@@ -1476,10 +1462,20 @@ async def scrape(keyword, max_oldness_seconds, maximum_items_to_collect, max_tot
                     break
         if nb_comments_checked >= max_total_comments_to_check:
             break
-        
+
+        if len(last_n_video_comment_count) >= n_rolling_size_min:
+            nb_zeros = sum(1 for count in last_n_video_comment_count[-n_rolling_size:] if count == 0)
+            if nb_zeros >= n_rolling_size_min:
+                logging.info("[Youtube] [RATE LIMIT PROTECTION] The rolling window of comments count is full of 0s. Stopping the scraping iteration...")
+                break
+        last_n_video_comment_count.append(nb_comments)
+        if len(last_n_video_comment_count) > n_rolling_size:
+            last_n_video_comment_count.pop(0)
+
         URLs_remaining_trials -= 1
         if URLs_remaining_trials <= 0:
             break
+
 
 
 
@@ -1547,7 +1543,7 @@ async def query(parameters: dict) -> AsyncGenerator[Item, None]:
         "socks5://192.227.159.236:30002",
         "socks5://192.227.159.227:30002"
     ])
-    local_ip = parameters.get("local_ip", "0.0.0.0")  # Default to bind to all interfaces if not specified
+    local_ip = parameters.get("local_ip", "0.0.0.0")
 
     YT_COMMENT_DLOADER_ = YoutubeCommentDownloader()
     
