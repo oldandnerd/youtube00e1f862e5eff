@@ -1322,12 +1322,11 @@ async def fetch_comments(youtube_url, proxy_url, max_oldness_seconds):
         return [], youtube_url, proxy_url
 
 
-async def process_url(url, title, proxy, max_oldness_seconds, semaphore, results):
-    async with semaphore:
-        logging.info(f"[Youtube] Using proxy: {proxy} for URL: {url}")
-        comments_list, youtube_url, proxy_url = await fetch_comments(url, proxy, max_oldness_seconds)
-        results.append((comments_list, title, youtube_url, proxy_url))
-
+async def process_url(url, title, proxy_cycle, max_oldness_seconds, results):
+    proxy_url = next(proxy_cycle)
+    logging.info(f"[Youtube] Using proxy: {proxy_url} for URL: {url}")
+    comments_list, youtube_url, proxy_url = await fetch_comments(url, proxy_url, max_oldness_seconds)
+    results.append((comments_list, title, youtube_url, proxy_url))
 
 async def scrape(keyword, max_oldness_seconds, maximum_items_to_collect, max_total_comments_to_check, proxy_list, local_ip):
     global YT_COMMENT_DLOADER_
@@ -1404,10 +1403,7 @@ async def scrape(keyword, max_oldness_seconds, maximum_items_to_collect, max_tot
     proxy_cycle = cycle(proxy_list)
     results = []
 
-    # Limit the number of concurrent tasks
-    semaphore = asyncio.Semaphore(10)
-
-    tasks = [process_url(url, title, next(proxy_cycle), max_oldness_seconds, semaphore, results) for url, title in zip(urls, titles)]
+    tasks = [process_url(url, title, proxy_cycle, max_oldness_seconds, results) for url, title in zip(urls, titles)]
     await asyncio.gather(*tasks)
 
     for comments_list, title, youtube_video_url, proxy_url in results:
@@ -1462,7 +1458,6 @@ async def scrape(keyword, max_oldness_seconds, maximum_items_to_collect, max_tot
                 logging.info(f"[Youtube] Found {nb_zeros} zero-comment videos in the last {n_rolling_size_min} videos. Breaking early.")
                 break
         last_n_video_comment_count.append(nb_comments)
-
 
 
 
