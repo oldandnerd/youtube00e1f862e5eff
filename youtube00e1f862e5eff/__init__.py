@@ -1090,7 +1090,6 @@ YT_CFG_RE = r'ytcfg\.set\s*\(\s*({.+?})\s*\)\s*;'
 YT_INITIAL_DATA_RE = r'(?:window\s*\[\s*["\']ytInitialData["\']\s*\]|ytInitialData)\s*=\s*({.+?})\s*;\s*(?:var\s+meta|</script|\n)'
 YT_HIDDEN_INPUT_RE = r'<input\s+type="hidden"\s+name="([A-Za-z0-9_]+)"\s+value="([A-Za-z0-9_\-\.]*)"\s*(?:required|)\s*>'
 
-
 class YoutubeCommentDownloader:
 
     def __init__(self, proxy_url=None):
@@ -1245,13 +1244,6 @@ class YoutubeCommentDownloader:
                 stack.extend(current_item)
 
 
-
-
-
-
-
-
-
 def is_within_timeframe_seconds(input_timestamp, timeframe_sec):
     input_timestamp = int(input_timestamp)
     current_timestamp = int(time.time())
@@ -1289,13 +1281,8 @@ def randomly_add_search_filter(input_URL, p):
         return input_URL + chosen_suffix
     else:
         return input_URL
-    
 
 
-
-
-
-# NEW
 async def fetch_url_with_proxy(url, proxy_url):
     if proxy_url.startswith("socks5://") and "[" in proxy_url and "]" in proxy_url:
         proxy_url = proxy_url.replace("[", "").replace("]", "")
@@ -1310,10 +1297,6 @@ async def fetch_url_with_proxy(url, proxy_url):
         return None, proxy_url
 
 
-
-
-
-# NEW
 async def fetch_comments(youtube_url, proxy_url, max_oldness_seconds):
     YT_COMMENT_DLOADER_ = YoutubeCommentDownloader(proxy_url=proxy_url)
     try:
@@ -1324,14 +1307,11 @@ async def fetch_comments(youtube_url, proxy_url, max_oldness_seconds):
         return [], youtube_url, proxy_url
 
 
-#NEW
 async def process_url(url, title, proxy_cycle, max_oldness_seconds, results):
     proxy_url = next(proxy_cycle)
     logging.info(f"[Youtube] Using proxy: {proxy_url} for URL: {url}")
     comments_list, youtube_url, proxy_url = await fetch_comments(url, proxy_url, max_oldness_seconds)
     results.append((comments_list, title, youtube_url, proxy_url))
-
-
 
 
 async def scrape(keyword, max_oldness_seconds, maximum_items_to_collect, max_total_comments_to_check, proxy_list, local_ip):
@@ -1472,9 +1452,6 @@ async def scrape(keyword, max_oldness_seconds, maximum_items_to_collect, max_tot
             break
 
 
-
-
-            
 def randomly_replace_or_choose_keyword(input_string, p):
     if random.random() < p:
         return input_string
@@ -1522,9 +1499,6 @@ def convert_spaces_to_plus(input_string):
     return input_string.replace(" ", "+")
 
 
-
-
-
 async def query(parameters: dict) -> AsyncGenerator[Item, None]:
     global YT_COMMENT_DLOADER_
     yielded_items = 0
@@ -1568,3 +1542,16 @@ async def query(parameters: dict) -> AsyncGenerator[Item, None]:
                 break
     except asyncio.exceptions.TimeoutError:
         logging.info(f"[Youtube] Internal requests are taking longer than {REQUEST_TIMEOUT} - we must give up & move on. Check your network.")
+
+
+
+
+
+
+
+
+
+
+
+
+
