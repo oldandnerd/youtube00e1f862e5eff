@@ -1091,8 +1091,7 @@ YT_INITIAL_DATA_RE = r'(?:window\s*\[\s*["\']ytInitialData["\']\s*\]|ytInitialDa
 YT_HIDDEN_INPUT_RE = r'<input\s+type="hidden"\s+name="([A-Za-z0-9_]+)"\s+value="([A-Za-z0-9_\-\.]*)"\s*(?:required|)\s*>'
 
 class YoutubeCommentDownloader:
-
-    def __init__(self, proxy_url):
+    def __init__(self, proxy_url=None):
         self.session = requests.Session()
         self.session.headers['User-Agent'] = USER_AGENT
         self.session.cookies.set('CONSENT', 'YES+cb', domain='.youtube.com')
@@ -1105,7 +1104,7 @@ class YoutubeCommentDownloader:
                 'continuation': endpoint['continuationCommand']['token']}
 
         for _ in range(retries):
-            response = self.session.post(url, params={'key': ytcfg['INNERTUBE_API_KEY']}, json=data, timeout=POST_REQUEST_TIMEOUT, proxies={"http": self.proxy_url, "https": self.proxy_url})
+            response = self.session.post(url, params={'key': ytcfg['INNERTUBE_API_KEY']}, json=data, timeout=POST_REQUEST_TIMEOUT)
             if response.status_code == 200:
                 return response.json()
             if response.status_code in [403, 413]:
@@ -1117,17 +1116,25 @@ class YoutubeCommentDownloader:
         return self.get_comments_from_url(YOUTUBE_VIDEO_URL.format(youtube_id=youtube_id), *args, **kwargs)
 
     def get_comments_from_url(self, youtube_url, sort_by=SORT_BY_RECENT, language=None, sleep=.1, limit=100, max_oldness_seconds=3600):
-        response = self.session.get(youtube_url, timeout=REQUEST_TIMEOUT, proxies={"http": self.proxy_url, "https": self.proxy_url})
+        try:
+            response = self.session.get(youtube_url, timeout=REQUEST_TIMEOUT, proxies={"http": self.proxy_url, "https": self.proxy_url})
+        except requests.exceptions.RequestException as e:
+            logging.error(f"Error fetching YouTube page: {e}")
+            return
 
         if 'consent' in str(response.url):
             params = dict(re.findall(YT_HIDDEN_INPUT_RE, response.text))
             params.update({'continue': youtube_url, 'set_eom': False, 'set_ytc': True, 'set_apyt': True})
-            response = self.session.post(YOUTUBE_CONSENT_URL, params=params, timeout=REQUEST_TIMEOUT, proxies={"http": self.proxy_url, "https": self.proxy_url})
+            try:
+                response = self.session.post(YOUTUBE_CONSENT_URL, params=params, timeout=REQUEST_TIMEOUT, proxies={"http": self.proxy_url, "https": self.proxy_url})
+            except requests.exceptions.RequestException as e:
+                logging.error(f"Error submitting YouTube consent form: {e}")
+                return
 
         html = response.text
         ytcfg = json.loads(self.regex_search(html, YT_CFG_RE, default=''))
         if not ytcfg:
-            return
+            return  # Unable to extract configuration
         if language:
             ytcfg['INNERTUBE_CONTEXT']['client']['hl'] = language
 
@@ -1136,7 +1143,7 @@ class YoutubeCommentDownloader:
         item_section = next(self.search_dict(data, 'itemSectionRenderer'), None)
         renderer = next(self.search_dict(item_section, 'continuationItemRenderer'), None) if item_section else None
         if not renderer:
-            return
+            return  # Comments disabled?
 
         sort_menu = next(self.search_dict(data, 'sortFilterSubMenuRenderer'), {}).get('subMenuItems', [])
         if not sort_menu:
@@ -1244,6 +1251,10 @@ class YoutubeCommentDownloader:
 
 
 
+
+
+
+
 def is_within_timeframe_seconds(input_timestamp, timeframe_sec):
     input_timestamp = int(input_timestamp)
     current_timestamp = int(time.time())
@@ -1284,6 +1295,12 @@ def randomly_add_search_filter(input_URL, p):
     
 
 
+
+import aiohttp
+import asyncio
+import logging
+from aiohttp_socks import ProxyConnector
+from itertools import cycle
 
 async def scrape(keyword, max_oldness_seconds, maximum_items_to_collect, max_total_comments_to_check, proxy_list, local_ip):
     global YT_COMMENT_DLOADER_
@@ -1463,6 +1480,9 @@ async def scrape(keyword, max_oldness_seconds, maximum_items_to_collect, max_tot
             break
 
 
+
+
+
             
 def randomly_replace_or_choose_keyword(input_string, p):
     if random.random() < p:
@@ -1515,12 +1535,14 @@ async def query(parameters: dict) -> AsyncGenerator[Item, None]:
     yielded_items = 0
     max_oldness_seconds, maximum_items_to_collect, min_post_length, probability_to_select_default_kws, max_total_comments_to_check  = read_parameters(parameters)
     selected_keyword = ""
-    proxy_list = parameters.get("proxy_list",  [
-    "socks5://192.227.159.229:30002",
-    "socks5://192.227.159.230:30002",
-    "socks5://192.227.159.231:30002",
-    "socks5://192.227.159.232:30002"
-])
+    proxy_list = [
+        "socks5://192.227.159.229:30002",
+        "socks5://192.227.159.224:30002",
+        "socks5://192.227.159.204:30002",
+        "socks5://192.227.159.250:30002",
+        "socks5://192.227.159.236:30002",
+        "socks5://192.227.159.227:30002"
+    ]
     local_ip = parameters.get("local_ip", "0.0.0.0")  # Default to bind to all interfaces if not specified
 
     YT_COMMENT_DLOADER_ = YoutubeCommentDownloader(proxy_list)
@@ -1551,4 +1573,3 @@ async def query(parameters: dict) -> AsyncGenerator[Item, None]:
                 break
     except asyncio.exceptions.TimeoutError:
         logging.info(f"[Youtube] Internal requests are taking longer than {REQUEST_TIMEOUT} - we must give up & move on. Check your network.")
-
