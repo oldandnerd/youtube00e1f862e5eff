@@ -1284,6 +1284,12 @@ async def scrape(keyword, max_oldness_seconds, maximum_items_to_collect, max_tot
     URL = randomly_add_search_filter(URL, p=PROBABILITY_ADDING_SUFFIX)
     logging.info(f"[Youtube] Looking at video URL: {URL}")
 
+    # Ensure the proxy URL is correctly formatted for IPv6
+    if proxy_url.startswith("socks5://") and proxy_url.count(":") > 1:
+        # Extract the IPv6 address and port
+        ipv6_address, port = proxy_url[len("socks5://"):].rsplit(":", 1)
+        proxy_url = f"socks5://[{ipv6_address}]:{port}"
+
     # Ensure the proxy URL is valid
     try:
         connector = ProxyConnector.from_url(proxy_url)
@@ -1438,6 +1444,7 @@ async def scrape(keyword, max_oldness_seconds, maximum_items_to_collect, max_tot
         if URLs_remaining_trials <= 0:
             break
 
+
             
 def randomly_replace_or_choose_keyword(input_string, p):
     if random.random() < p:
@@ -1491,6 +1498,12 @@ async def query(parameters: dict) -> AsyncGenerator[Item, None]:
     max_oldness_seconds, maximum_items_to_collect, min_post_length, probability_to_select_default_kws, max_total_comments_to_check  = read_parameters(parameters)
     selected_keyword = ""
     proxy_url = parameters.get("proxy_url", "socks5://2607:f130:0:f8::2bab:3a16:1080")
+
+    # Ensure the proxy URL is correctly formatted for IPv6
+    if proxy_url.startswith("socks5://") and proxy_url.count(":") > 1:
+        ipv6_address, port = proxy_url[len("socks5://"):].rsplit(":", 1)
+        proxy_url = f"socks5://[{ipv6_address}]:{port}"
+
     YT_COMMENT_DLOADER_ = YoutubeCommentDownloader(proxy_url)
     
     content_map = {}
