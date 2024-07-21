@@ -1090,6 +1090,7 @@ YT_CFG_RE = r'ytcfg\.set\s*\(\s*({.+?})\s*\)\s*;'
 YT_INITIAL_DATA_RE = r'(?:window\s*\[\s*["\']ytInitialData["\']\s*\]|ytInitialData)\s*=\s*({.+?})\s*;\s*(?:var\s+meta|</script|\n)'
 YT_HIDDEN_INPUT_RE = r'<input\s+type="hidden"\s+name="([A-Za-z0-9_]+)"\s+value="([A-Za-z0-9_\-\.]*)"\s*(?:required|)\s*>'
 
+
 class YoutubeCommentDownloader:
     def __init__(self, proxy_url=None):
         self.session = requests.Session()
@@ -1104,7 +1105,7 @@ class YoutubeCommentDownloader:
                 'continuation': endpoint['continuationCommand']['token']}
 
         for _ in range(retries):
-            response = self.session.post(url, params={'key': ytcfg['INNERTUBE_API_KEY']}, json=data, timeout=POST_REQUEST_TIMEOUT)
+            response = self.session.post(url, params={'key': ytcfg['INNERTUBE_API_KEY']}, json=data, timeout=POST_REQUEST_TIMEOUT, proxies={"http": self.proxy_url, "https": self.proxy_url})
             if response.status_code == 200:
                 return response.json()
             if response.status_code in [403, 413]:
@@ -1255,6 +1256,7 @@ class YoutubeCommentDownloader:
 
 
 
+
 def is_within_timeframe_seconds(input_timestamp, timeframe_sec):
     input_timestamp = int(input_timestamp)
     current_timestamp = int(time.time())
@@ -1296,11 +1298,7 @@ def randomly_add_search_filter(input_URL, p):
 
 
 
-import aiohttp
-import asyncio
-import logging
-from aiohttp_socks import ProxyConnector
-from itertools import cycle
+
 
 async def scrape(keyword, max_oldness_seconds, maximum_items_to_collect, max_total_comments_to_check, proxy_list, local_ip):
     global YT_COMMENT_DLOADER_
@@ -1482,7 +1480,6 @@ async def scrape(keyword, max_oldness_seconds, maximum_items_to_collect, max_tot
 
 
 
-
             
 def randomly_replace_or_choose_keyword(input_string, p):
     if random.random() < p:
@@ -1530,22 +1527,26 @@ def read_parameters(parameters):
 def convert_spaces_to_plus(input_string):
     return input_string.replace(" ", "+")
 
+
+
+
+
 async def query(parameters: dict) -> AsyncGenerator[Item, None]:
     global YT_COMMENT_DLOADER_
     yielded_items = 0
     max_oldness_seconds, maximum_items_to_collect, min_post_length, probability_to_select_default_kws, max_total_comments_to_check  = read_parameters(parameters)
     selected_keyword = ""
-    proxy_list = [
+    proxy_list = parameters.get("proxy_list", [
         "socks5://192.227.159.229:30002",
         "socks5://192.227.159.224:30002",
         "socks5://192.227.159.204:30002",
         "socks5://192.227.159.250:30002",
         "socks5://192.227.159.236:30002",
         "socks5://192.227.159.227:30002"
-    ]
+    ])
     local_ip = parameters.get("local_ip", "0.0.0.0")  # Default to bind to all interfaces if not specified
 
-    YT_COMMENT_DLOADER_ = YoutubeCommentDownloader(proxy_list)
+    YT_COMMENT_DLOADER_ = YoutubeCommentDownloader()
     
     content_map = {}
     await asyncio.sleep(1)
