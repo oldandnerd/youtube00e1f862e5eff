@@ -2,7 +2,7 @@ import re
 from typing import AsyncGenerator
 import aiohttp
 import dateparser
-
+import random
 from itertools import cycle
 from aiohttp_socks import ProxyConnector
 
@@ -1328,7 +1328,6 @@ async def process_url(url, title, proxy_cycle, max_oldness_seconds, results):
     comments_list, youtube_url, proxy_url = await fetch_comments(url, proxy_url, max_oldness_seconds)
     results.append((comments_list, title, youtube_url, proxy_url))
 
-
 async def scrape(keyword, max_oldness_seconds, maximum_items_to_collect, max_total_comments_to_check, proxy_list, local_ip):
     global YT_COMMENT_DLOADER_
     URL = "https://www.youtube.com/results?search_query={}".format(keyword)
@@ -1415,7 +1414,6 @@ async def scrape(keyword, max_oldness_seconds, maximum_items_to_collect, max_tot
         for comment in comments_list:
             try:
                 comment_timestamp = int(round(comment['time_parsed'], 1))
-                logging.info(f"[Youtube] Comment timestamp: {comment_timestamp}")
             except Exception as e:
                 logging.exception(f"[Youtube] parsing comment datetime error: {e}\n \
                 THIS CAN BE DUE TO FOREIGN/SPECIAL DATE FORMAT, not handled at this date.\n Please report this to the Exorde discord, with your region/VPS location.")
@@ -1457,16 +1455,9 @@ async def scrape(keyword, max_oldness_seconds, maximum_items_to_collect, max_tot
         if len(last_n_video_comment_count) >= n_rolling_size_min:
             nb_zeros = sum(1 for count in last_n_video_comment_count[-n_rolling_size:] if count == 0)
             if nb_zeros >= n_rolling_size_min:
-                logging.info("[Youtube] [RATE LIMIT PROTECTION] The rolling window of comments count is full of 0s. Stopping the scraping iteration...")
+                logging.info(f"[Youtube] Found {nb_zeros} zero-comment videos in the last {n_rolling_size_min} videos. Breaking early.")
                 break
         last_n_video_comment_count.append(nb_comments)
-        if len(last_n_video_comment_count) > n_rolling_size:
-            last_n_video_comment_count.pop(0)
-
-        URLs_remaining_trials -= 1
-        if URLs_remaining_trials <= 0:
-            break
-
 
 
 
@@ -1518,7 +1509,7 @@ def convert_spaces_to_plus(input_string):
     return input_string.replace(" ", "+")
 
 
-def read_proxy_ips(file_path="/exorde/ips.txt"):
+def read_proxy_ips(file_path="/exorde/ips.txt", max_ip_load=10):
     proxy_ips = []
     try:
         with open(file_path, "r") as file:
@@ -1528,18 +1519,20 @@ def read_proxy_ips(file_path="/exorde/ips.txt"):
                     proxy_ips.append(f"socks5://{ip}")
     except Exception as e:
         logging.error(f"Error reading proxy IPs from {file_path}: {e}")
-    return proxy_ips
-
+    
+    # Shuffle and limit the number of proxies
+    random.shuffle(proxy_ips)
+    return proxy_ips[:max_ip_load]
 
 
 async def query(parameters: dict) -> AsyncGenerator[Item, None]:
     global YT_COMMENT_DLOADER_
     yielded_items = 0
-    max_oldness_seconds, maximum_items_to_collect, min_post_length, probability_to_select_default_kws, max_total_comments_to_check  = read_parameters(parameters)
+    max_oldness_seconds, maximum_items_to_collect, min_post_length, probability_to_select_default_kws, max_total_comments_to_check = read_parameters(parameters)
     selected_keyword = ""
     
-    # Get proxy list from file
-    proxy_list = read_proxy_ips()
+    # Get proxy list from file with limit
+    proxy_list = read_proxy_ips(max_ip_load=20)
     
     local_ip = parameters.get("local_ip", "0.0.0.0")
 
@@ -1571,7 +1564,6 @@ async def query(parameters: dict) -> AsyncGenerator[Item, None]:
                 break
     except asyncio.exceptions.TimeoutError:
         logging.info(f"[Youtube] Internal requests are taking longer than {REQUEST_TIMEOUT} - we must give up & move on. Check your network.")
-
 
 
 
